@@ -1,0 +1,162 @@
+---
+title: "Assignment 4"
+author: "Liying Deng"
+format: html
+editor: visual
+embed-resources: true
+---
+
+# HPC
+
+Rewrite the following R functions to make them faster. It is OK (and recommended) to take a look at StackOverflow and Google
+
+```{r}
+fun1 <- function(mat) {
+  n <- nrow(mat)
+  ans <- double(n) 
+  for (i in 1:n) {
+    ans[i] <- sum(mat[i, ])
+  }
+  ans
+}
+fun2 <- function(mat) {
+  n <- nrow(mat)
+  k <- ncol(mat)
+  ans <- mat
+  for (i in 1:n) {
+    for (j in 2:k) {
+      ans[i, j] <- mat[i, j] + ans[i, j - 1]
+    }
+  }
+  ans
+}
+fun1alt <- function(mat) {
+  rowSums(mat)
+}
+fun2alt <- function(mat) {
+  t(apply(mat, 1, cumsum))
+}
+```
+
+# Question 1
+
+```{r}
+set.seed(2315)
+dat <- matrix(rnorm(200 * 100), nrow = 200)
+# Test for the first
+microbenchmark::microbenchmark(
+  fun1(dat),
+  fun1alt(dat), unit = "relative"
+)
+# Test for the second
+microbenchmark::microbenchmark(
+  fun2(dat),
+  fun2alt(dat), unit = "relative"
+)
+```
+
+# Make things run faster with parallel computing
+
+The following function allows simulating pi:
+
+```{r}
+sim_pi <- function(n = 1000, i = NULL) {
+  p <- matrix(runif(n*2), ncol = 2)
+  mean(rowSums(p^2) < 1) * 4
+}
+set.seed(156)
+sim_pi(1000) # 3.132
+```
+
+In order to get accurate estimates, we can run this function multiple times, with the following code:
+
+```{r}
+set.seed(1231)
+system.time({
+  ans <- unlist(lapply(1:4000, sim_pi, n = 10000))
+  print(mean(ans))
+})
+```
+
+# Question 2
+
+```{r}
+library(parallel)
+sim_pi <- function(i, n) {
+  x <- runif(n)
+  y <- runif(n)
+  pi_estimate <- mean((x^2 +y^2) <= 1) * 4
+  return(pi_estimate)}
+set.seed(1231)
+system.time({
+  ans <- unlist(mclapply(1:4000, sim_pi, n = 10000, mc.cores = 4))
+  print(mean(ans))})
+```
+
+# SQL
+
+```{r}
+library(RSQLite)
+library(DBI)
+# Initialize a temporary in memory database
+con <- dbConnect(SQLite(), ":memory:")
+# Download tables
+film <- read.csv("https://raw.githubusercontent.com/ivanceras/sakila/master/csv-sakila-db/film.csv")
+film_category <- read.csv("https://raw.githubusercontent.com/ivanceras/sakila/master/csv-sakila-db/film_category.csv")
+category <- read.csv("https://raw.githubusercontent.com/ivanceras/sakila/master/csv-sakila-db/category.csv")
+# Copy data.frames to database
+dbWriteTable(con, "film", film)
+dbWriteTable(con, "film_category", film_category)
+dbWriteTable(con, "category", category)
+```
+
+# Question 3
+
+```{sql, connection=con}
+  SELECT rating, COUNT(*) AS movie_count
+  FROM film
+  GROUP BY rating
+  ORDER BY movie_count DESC;
+```
+
+Conclusion: The following rating category movies (1) PG-13 : 223 (2) NC17: 210 (3)R:195 (4)PG: 194 (5)G: 180
+
+# Question 4
+
+```{sql, connection=con}
+  SELECT rating, 
+         AVG(replacement_cost) AS avg_replacement_cost, 
+         AVG(rental_rate) AS avg_rental_rate
+  FROM film
+  GROUP BY rating
+  ORDER BY rating;
+```
+
+Conclusion:
+
+the average replacement cost each rating category (1)G: 20.12333 (2)NC-17: 20.13762 (3) PG:18.95907 (4)PG-13: 20.40256 (5)R: 20.23103
+
+The average rental rate for each rating category (1)G: 2.912222  (2)NC-17: 2.970952  (3)PG: 3.051856 (4)PG-13: 3.034843   (5)R: 2.938718	
+
+# Question 5
+
+```{sql, connection=con}
+  SELECT c.category_id,
+  COUNT(c.film_id) AS film_count
+FROM film_category AS c
+  INNER JOIN film as f on c.film_id = f.film_id
+GROUP BY c.category_id
+```
+
+# Question 6
+
+```{sql, connection=con}
+SELECT c.name AS category_name, COUNT(fc.film_id) AS film_count
+  FROM film_category fc
+  INNER JOIN category c ON fc.category_id = c.category_id
+  GROUP BY c.name
+  ORDER BY film_count DESC
+  LIMIT 1;
+```
+
+Conclusion : The most popular category is Sports and there are 74 films.
